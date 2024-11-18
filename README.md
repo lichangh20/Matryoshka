@@ -70,7 +70,7 @@ You can install the required packages by running the following command:
 
 The experiments are conducted on the following datasets: `gsm8k`, `alfworld`, and `LaMP`. The configurations for the experiments are stored in the `scripts` directory.
 
-To facilitate the experiments, we have provided all the collected data and the fine-tuned checkpoints for the GSM and ALFWorld tasks. These resources can be accessed [here](https://drive.google.com/drive/folders/14XVXzGPkEZ8U6p48RkgjxyNVZzbiDGyR?usp=drive_link).
+To facilitate the experiments, we have provided all the collected data and the fine-tuned checkpoints for the GSM and ALFWorld tasks. These resources can be accessed [here](https://drive.google.com/drive/folders/14XVXzGPkEZ8U6p48RkgjxyNVZzbiDGyR?usp=drive_link). Due to limited storage space, we are providing only the LoRA head instead of the complete model checkpoint.
 
 To run the experiments, you can follow the following instructions.
 
@@ -184,8 +184,6 @@ fi
 
 ```
 
-Alternatively, you can also [download](https://drive.google.com/drive/folders/1vwqPRAgy0BuWREPeroymDAekOjzpDIqN?usp=drive_link) the ckpt.
-
 > Suppose DPO trained Lora model is saved at ./pal/llama3-8b-instruct-dpo-lora
 
 #### Step3. Use trained Lora to do inference 
@@ -284,8 +282,6 @@ if [[ ${1} != "slurm" ]]; then
 fi
 
 ```
-
-Alternatively, you can also [download](https://drive.google.com/drive/folders/1W9gMvuyNHYU-3FHi3tBe6KpV5pa5y9fp?usp=drive_link) the ckpt.
 
 >  Suppose DPO trained Lora model is saved at ./alfworld/llama3-8b-instruct-dpo-lora
 
