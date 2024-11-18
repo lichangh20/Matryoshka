@@ -70,85 +70,13 @@ You can install the required packages by running the following command:
 
 The experiments are conducted on the following datasets: `gsm8k`, `alfworld`, and `LaMP`. The configurations for the experiments are stored in the `scripts` directory.
 
+To facilitate the experiments, we have provided all the collected data and the fine-tuned checkpoints for the GSM and ALFWorld tasks. These resources can be accessed [here](https://drive.google.com/drive/folders/14XVXzGPkEZ8U6p48RkgjxyNVZzbiDGyR?usp=drive_link).
+
 To run the experiments, you can follow the following instructions.
 
-## Scirpts on Alfworld: Planning
-
-Please refer to instruction [here](https://github.com/haotiansun14/AdaPlanner/tree/main) to prepare for Alfworld environment and data
-
-#### Step 0. Use VLLM to start white-box model server
-
-```bash
-bash ./scripts/vllm.sh 8000 0
-```
-
-#### Step1. Sample Data On Training Set
-
-```bash
-python alfworld_generate_data.py \
-    --disable_closeloop
-```
-
->  Suppose generated data is saved at ./data/alfworld/gpt3.5/collect/train.jsonl
-
-#### Step2. DPO Traning
-
-```bash
-set -x
-
-read -r -d '' training_commands <<EOF
-train_dpo \
-   --save_path ./alfworld/llama3-8b-instruct-dpo-lora \
-   --save_steps -1 \
-   --logging_steps 1 \
-   --eval_steps -1 \
-   --train_batch_size 64 \
-   --micro_train_batch_size 1 \
-   --pretrain meta-llama/Meta-Llama-3-8B-Instruct \
-   --bf16 \
-   --max_epochs 1 \
-   --max_len 8192 \
-   --zero_stage 3 \
-   --learning_rate 5e-6 \
-   --beta 0.1 \
-   --dataset json@./data/alfworld/gpt3.5/collect \
-   --apply_chat_template \
-   --chosen_key chosen \
-   --rejected_key rejected \
-   --load_checkpoint \
-   --gradient_checkpointing \
-   --label_smoothing 0.1 \
-   --lora_rank 8 \
-   --lora_alpha 16 \
-   --lora_dropout 0.05
-EOF
-
-# --use_wandb
-
-if [[ ${1} != "slurm" ]]; then
-    deepspeed  --master_port=29400 --include localhost:0,1,2,3 --module $training_commands
-fi
-
-```
-
-> Suppose DPO trained Lora model is saved at ./alfworld/llama3-8b-instruct-dpo-lora
-
-#### Step3. Use trained Lora to do inference 
-
-```bash
-# open white-box vllm server
-bash ./scripts/vllm_peft.sh 8000 0 meta-llama/Meta-Llama-3-8B-Instruct alfworld/llama3-8b-instruct-dpo-lora
-
-# run inference using lora model
-python alfworld_pipeline.py \
-    --whitebox lora \
-    --port 8000 \
-    --use_gpt
-```
-
-
-
 ## Scripts on GSM: Reasoning
+
+
 
 #### Step0. Supervised Fine-tuning warmup & Start VLLM Server
 
@@ -193,7 +121,7 @@ fi
 
 ```
 
-Alternatively, you can also [download](https://drive.google.com/drive/folders/1oesgbSnKvMZG9tHIN4dptq2t8u28Yo6I?usp=sharing) the ckpt.
+Alternatively, you can also [download](https://drive.google.com/drive/folders/1oesgbSnKvMZG9tHIN4dptq2t8u28Yo6I?usp=drive_link) the ckpt.
 
 > Suppose SFT model is saved at ./pal/llama3-8b-instruct-sft-lora-trainset 
 
@@ -211,6 +139,8 @@ python gsm_generate_data.py \
         --whitebox lora \
         --port 8000
 ```
+
+Alternatively, you can also [download](https://drive.google.com/file/d/1b8tOdu1ENkxz0tfu7PFo66mr0xU1p2bc/view?usp=drive_link) the data.
 
 > Suppose generated data is saved at ./data/gsm/gpt3.5/collect/train.jsonl
 
@@ -254,6 +184,8 @@ fi
 
 ```
 
+Alternatively, you can also [download](https://drive.google.com/drive/folders/1vwqPRAgy0BuWREPeroymDAekOjzpDIqN?usp=drive_link) the ckpt.
+
 > Suppose DPO trained Lora model is saved at ./pal/llama3-8b-instruct-dpo-lora
 
 #### Step3. Use trained Lora to do inference 
@@ -282,7 +214,98 @@ python gsm_pipeline.py \
     --compare_answer
 ```
 
+
+
+## Scirpts on Alfworld: Planning
+
+Please refer to instruction [here](https://github.com/haotiansun14/AdaPlanner/tree/main) to prepare for Alfworld environment and data
+
+#### Step0. Supervised Fine-tuning warmup & Start VLLM Server
+
+You can [download](https://drive.google.com/drive/folders/1-_EerZfDjYuavxS1zAD3GvvnSAC-7L-3?usp=drive_link) the SFT ckpt.
+
+> Suppose SFT model is saved at ./alfworld/llama3-8b-instruct-sft-lora-trainset 
+
+```bash
+# open white-box vllm server
+bash ./scripts/vllm_peft.sh 8000 0 meta-llama/Meta-Llama-3-8B-Instruct alfworld/llama3-8b-instruct-sft-lora-trainset 
+```
+
+
+
+#### Step1. Sample Data On Training Set
+
+```bash
+python alfworld_generate_data.py \
+    --disable_closeloop \
+    --whitebox lora \
+```
+
+Alternatively, you can also [download](https://drive.google.com/drive/folders/1BZzULLaohD5YhX2JGMaPNFGAnva5nX2p?usp=drive_link) the data.
+
+>  Suppose generated data is saved at ./data/alfworld/gpt3.5/collect/train.jsonl
+
+#### Step2. DPO Traning
+
+```bash
+set -x
+
+read -r -d '' training_commands <<EOF
+train_dpo \
+   --save_path ./alfworld/llama3-8b-instruct-dpo-lora \
+   --save_steps -1 \
+   --logging_steps 1 \
+   --eval_steps -1 \
+   --train_batch_size 64 \
+   --micro_train_batch_size 1 \
+   --pretrain meta-llama/Meta-Llama-3-8B-Instruct \
+   --bf16 \
+   --max_epochs 1 \
+   --max_len 8192 \
+   --zero_stage 3 \
+   --learning_rate 5e-6 \
+   --beta 0.1 \
+   --dataset json@./data/alfworld/gpt3.5/collect \
+   --apply_chat_template \
+   --chosen_key chosen \
+   --rejected_key rejected \
+   --load_checkpoint \
+   --gradient_checkpointing \
+   --label_smoothing 0.1 \
+   --lora_rank 8 \
+   --lora_alpha 16 \
+   --lora_dropout 0.05
+EOF
+
+# --use_wandb
+
+if [[ ${1} != "slurm" ]]; then
+    deepspeed  --master_port=29400 --include localhost:0,1,2,3 --module $training_commands
+fi
+
+```
+
+Alternatively, you can also [download](https://drive.google.com/drive/folders/1W9gMvuyNHYU-3FHi3tBe6KpV5pa5y9fp?usp=drive_link) the ckpt.
+
+>  Suppose DPO trained Lora model is saved at ./alfworld/llama3-8b-instruct-dpo-lora
+
+#### Step3. Use trained Lora to do inference 
+
+```bash
+# open white-box vllm server
+bash ./scripts/vllm_peft.sh 8000 0 meta-llama/Meta-Llama-3-8B-Instruct alfworld/llama3-8b-instruct-dpo-lora
+
+# run inference using lora model
+python alfworld_pipeline.py \
+    --whitebox lora \
+    --port 8000 \
+    --use_gpt
+```
+
+
+
 ## Scripts on LaMP: Personalization
+
 #### Step0. Prepare the data
 
 ```bash
@@ -362,6 +385,7 @@ python lamp_pipeline.py \
 ```
 
 #### Step5. Evaluation
+
 ```bash
 python metrics/eval.py
 ```
@@ -378,4 +402,3 @@ If you find our work helpful, please consider citing our paper:
   year={2024}
 }
 ```
-
