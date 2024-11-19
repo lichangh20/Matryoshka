@@ -54,7 +54,7 @@ class DPOTrainer(ABC):
         self.args = strategy.args
 
         self.beta = beta
-        self.loss_fn = DPOLoss(self.beta, self.args.label_smoothing, self.args.ipo)
+        self.loss_fn = DPOLoss(self.beta, self.args.gamma_beta_ratio, self.args.label_smoothing, self.args.ipo, self.args.simpo)
 
         # Mixtral 8*7b
         self.aux_loss = self.args.aux_loss_coef > 1e-8
@@ -116,7 +116,8 @@ class DPOTrainer(ABC):
             )
 
             self.model.train()
-            self.ref_model.eval()
+            if not args.simpo:
+                self.ref_model.eval()
             acc_mean = 0
             loss_mean = 0
             # train
@@ -128,13 +129,16 @@ class DPOTrainer(ABC):
                 reject_ids = reject_ids.squeeze(1).to(torch.cuda.current_device())
                 r_mask = r_mask.squeeze(1).to(torch.cuda.current_device())
 
-                chosen_logps, rejected_logps, aux_loss, nll_loss = self.concatenated_forward(
+                chosen_logps, rejected_logps, aux_loss = self.concatenated_forward(
                     self.model, chosen_ids, c_mask, reject_ids, r_mask, prompt_id_lens
                 )
-                with torch.no_grad():
-                    reference_chosen_logps, reference_rejected_logps, _, _ = self.concatenated_forward(
-                        self.ref_model, chosen_ids, c_mask, reject_ids, r_mask, prompt_id_lens
-                    )
+                if args.simpo:
+                    reference_chosen_logps, reference_rejected_logps = None, None
+                else:
+                    with torch.no_grad():
+                        reference_chosen_logps, reference_rejected_logps, _ = self.concatenated_forward(
+                            self.ref_model, chosen_ids, c_mask, reject_ids, r_mask, prompt_id_lens
+                        )
 
                 # loss function
                 preference_loss, chosen_reward, reject_reward = self.loss_fn(
@@ -144,6 +148,7 @@ class DPOTrainer(ABC):
                 if not self.aux_loss:
                     aux_loss = 0
                 # nll loss
+                assert not self.nll_loss
                 if not self.nll_loss:
                     nll_loss = 0
 
@@ -223,13 +228,16 @@ class DPOTrainer(ABC):
                 reject_ids = reject_ids.squeeze(1).to(torch.cuda.current_device())
                 r_mask = r_mask.squeeze(1).to(torch.cuda.current_device())
 
-                chosen_logps, rejected_logps, aux_loss, _ = self.concatenated_forward(
+                chosen_logps, rejected_logps, aux_loss = self.concatenated_forward(
                     self.model, chosen_ids, c_mask, reject_ids, r_mask, prompt_id_lens
                 )
-                with torch.no_grad():
-                    reference_chosen_logps, reference_rejected_logps, _, _ = self.concatenated_forward(
-                        self.ref_model, chosen_ids, c_mask, reject_ids, r_mask, prompt_id_lens
-                    )
+                if self.args.simpo:
+                    reference_chosen_logps, reference_rejected_logps = None, None
+                else:
+                    with torch.no_grad():
+                        reference_chosen_logps, reference_rejected_logps, _ = self.concatenated_forward(
+                            self.ref_model, chosen_ids, c_mask, reject_ids, r_mask, prompt_id_lens
+                        )
 
                 loss, chosen_reward, reject_reward = self.loss_fn(
                     chosen_logps, rejected_logps, reference_chosen_logps, reference_rejected_logps
@@ -260,13 +268,18 @@ class DPOTrainer(ABC):
         )
         output = model(input_ids, attention_mask=att_masks, return_output=True)
         all_logits = output["logits"]
-        all_logps_sum, all_logps_mean = self._get_batch_logps(
-            all_logits, input_ids, att_masks, prompt_id_lens, average_log_prob=False
+        if self.args.simpo:
+            all_logps = self._get_batch_logps(
+            all_logits, input_ids, att_masks, prompt_id_lens, average_log_prob=True
         )
-        chosen_logps = all_logps_sum[: chosen_ids.shape[0]]
-        rejected_logps = all_logps_sum[chosen_ids.shape[0] :]
+        else:
+            all_logps = self._get_batch_logps(
+                all_logits, input_ids, att_masks, prompt_id_lens, average_log_prob=False
+            )
+        chosen_logps = all_logps[: chosen_ids.shape[0]]
+        rejected_logps = all_logps[chosen_ids.shape[0] :]
         aux_loss = output.aux_loss if "aux_loss" in output else []
-        return chosen_logps, rejected_logps, aux_loss, -all_logps_mean[: chosen_ids.shape[0]].mean()
+        return chosen_logps, rejected_logps, aux_loss
 
     def concatenated_inputs(self, chosen_ids, c_mask, reject_ids, r_mask, prompt_id_lens):
         """Concatenate the chosen and rejected inputs into a single tensor.
@@ -318,7 +331,7 @@ class DPOTrainer(ABC):
         Returns:
             A tensor of shape (batch_size,) containing the average/sum log probabilities of the given labels under the given logits.
         """
-        assert average_log_prob == False
+        # assert average_log_prob == False
         assert logits.shape[:-1] == labels.shape
 
         labels = labels[:, 1:].clone()
@@ -336,4 +349,8 @@ class DPOTrainer(ABC):
 
         logprobs_sums = (per_token_logps * loss_masks).sum(-1)
         logprobs_means = (per_token_logps * loss_masks).sum(-1) / loss_masks.sum(-1)
-        return logprobs_sums, logprobs_means
+        # return logprobs_sums, logprobs_means
+        if average_log_prob:
+            return logprobs_means
+        else:
+            return logprobs_sums

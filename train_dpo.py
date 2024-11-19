@@ -43,16 +43,20 @@ def train(args):
     strategy.print(model)
 
     # load weights for ref model
-    ref_model = Actor(
-        args.ref_pretrain,
-        use_flash_attention_2=args.flash_attn,
-        bf16=args.bf16,
-        load_in_4bit=args.load_in_4bit,
-    )
+    # We do not use ref model for simpo
+    if args.simpo:
+        ref_model = None
+    else: 
+        ref_model = Actor(
+            args.ref_pretrain,
+            use_flash_attention_2=args.flash_attn,
+            bf16=args.bf16,
+            load_in_4bit=args.load_in_4bit,
+        )
 
-    if args.ref_offload:
-        ref_model._offload = True
-    get_tokenizer(args.pretrain, ref_model.model, "right", use_fast=not args.disable_fast_tokenizer, token=HF_TOKEN)
+        if args.ref_offload:
+            ref_model._offload = True
+        get_tokenizer(args.pretrain, ref_model.model, "right", use_fast=not args.disable_fast_tokenizer, token=HF_TOKEN)
 
     # gradient_checkpointing
     if args.gradient_checkpointing:
@@ -114,7 +118,10 @@ def train(args):
     )
 
     # strategy prepare
-    ((model, optim, scheduler), ref_model) = strategy.prepare((model, optim, scheduler), ref_model)
+    if args.simpo:
+        (model, optim, scheduler) = strategy.prepare((model, optim, scheduler))
+    else:
+        ((model, optim, scheduler), ref_model) = strategy.prepare((model, optim, scheduler), ref_model)
 
     # load checkpoint
     consumed_samples = 0
@@ -190,7 +197,9 @@ if __name__ == "__main__":
     parser.add_argument("--max_epochs", type=int, default=1)
     parser.add_argument("--l2", type=float, default=0.0, help="weight decay loss")
     parser.add_argument("--beta", type=float, default=0.1)
+    parser.add_argument("--gamma_beta_ratio", type=float, default=0.55) # hyperparam for simpo
     parser.add_argument("--ipo", action="store_true", default=False)  # IPO https://arxiv.org/pdf/2310.12036v2.pdf
+    parser.add_argument("--simpo", action="store_true", default=False)  # SimPO https://arxiv.org/pdf/2405.14734
     parser.add_argument("--label_smoothing", type=float, default=0.0)  # cDPO https://arxiv.org/pdf/2305.18290.pdf
     parser.add_argument("--aux_loss_coef", type=float, default=0, help="MoE balancing loss")
     parser.add_argument(
